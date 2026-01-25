@@ -198,6 +198,15 @@ def download_yt(url):
         'format': 'bestaudio/best',
         'outtmpl': os.path.join(dl_dir, '%(title)s.%(ext)s'),
         'noplaylist': True,
+        # Tweak options to avoid 403 Forbidden on cloud servers
+        'extractor_args': {
+            'youtube': {
+                'player_client': ['android', 'web'],
+            }
+        },
+        'http_headers': {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        }
     }
     
     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
