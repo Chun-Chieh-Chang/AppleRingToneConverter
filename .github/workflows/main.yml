@@ -21,4 +21,4 @@ jobs:
         pip install -r requirements.txt
     - name: Basic Syntax Check
       run: |
-        python -m py_compile desktop_app.py web_app.py core/converter.py
+        python -m py_compile main.py streamlit_app.py core/converter.py

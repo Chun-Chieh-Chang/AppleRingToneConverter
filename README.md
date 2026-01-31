@@ -16,7 +16,7 @@
 點擊下方連結即可直接在瀏覽器中開始轉檔：
 ### [👉 點此開啟線上轉檔工具](https://appleringtoneconverter-arrhimpx7nqwc36secdbcu.streamlit.app/)
 
-> **部署說明**：本專案已配置 `packages.txt` 與 `requirements.txt`，可直接於 Streamlit Cloud 部署。部署時請將主程式路徑設為 `web_app.py`。
+> **部署說明**：本專案已配置 `packages.txt` 與 `requirements.txt`，可直接於 Streamlit Cloud 部署。預設主程式路徑為 `streamlit_app.py`。
 
 ---
 
@@ -33,14 +33,14 @@
 3. 確保電腦已安裝 **FFmpeg** (或將 `ffmpeg.exe` 放入專案的 `bin` 資料夾)。
 4. 執行工具：
    - 點擊 `run_app.bat` 
-   - 或執行 `python desktop_app.py`
+   - 或執行 `python main.py`
 
 ---
 
 ## 🛠️ 專案結構 (MECE Principle)
 - `core/`: 核心轉檔邏輯 (FFmpeg 封裝)
-- `desktop_app.py`: 桌面版 Tkinter 介面
-- `web_app.py`: 網頁版 Streamlit 介面
+- `main.py`: 桌面版 Tkinter 介面
+- `streamlit_app.py`: 網頁版 Streamlit 介面
 - `run_app.bat`: Windows 快速啟動腳本
 - `.github/`: GitHub Actions 自動化工作流
 

@@ -11,4 +11,4 @@ if %errorlevel% neq 0 (
 )
 
 echo Starting Desktop App...
-python desktop_app.py
+python main.py
