@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*$py.class
+.env
+.venv
+env/
+venv/
+ENV/
+bin/ffmpeg.exe
+bin/ffprobe.exe
+*.m4r
+*.m4a
+*.mp4
+*.mp3
+.devcontainer/

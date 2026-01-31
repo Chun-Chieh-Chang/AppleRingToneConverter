@@ -1,13 +1,14 @@
 @echo off
-echo Checking dependencies...
+echo ===================================
+echo   Apple Ringtone Converter Loader
+echo ===================================
+echo checking dependencies...
 pip install -r requirements.txt
 if %errorlevel% neq 0 (
     echo.
-    echo WARNING: Failed to install dependencies. 
-    echo Please check your internet connection or install manually.
-    echo.
+    echo WARNING: Failed to install dependencies.
     pause
 )
 
-echo Starting Apple Audio Converter...
-python main.py
+echo Starting Desktop App...
+python desktop_app.py
