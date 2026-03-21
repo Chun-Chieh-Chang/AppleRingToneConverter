@@ -3,6 +3,27 @@ import tempfile
 import os
 from core.converter import AudioConverter
 
+def format_seconds(seconds):
+    if seconds < 0: seconds = 0
+    h = int(seconds // 3600)
+    m = int((seconds % 3600) // 60)
+    s = int(seconds % 60)
+    return f"{h:02d}:{m:02d}:{s:02d}"
+
+def parse_seconds(time_str):
+    try:
+        parts = time_str.split(':')
+        if len(parts) == 3:
+            h, m, s = map(int, parts)
+            return h * 3600 + m * 60 + s
+        elif len(parts) == 2:
+            m, s = map(int, parts)
+            return m * 60 + s
+        else:
+            return int(parts[0])
+    except:
+        return 0
+
 def main():
     st.set_page_config(page_title="Apple Ringtone Converter", page_icon="🎵", layout="centered")
     
@@ -26,8 +47,37 @@ def main():
             st.subheader("Trimming")
             enable_trim = st.checkbox("Enable Trimming")
             if enable_trim:
-                start_time = st.text_input("Start Time", "00:00:00", help="HH:MM:SS")
-                end_time = st.text_input("End Time", "00:00:30", help="HH:MM:SS")
+                def on_fixed_change():
+                    if st.session_state.fixed_toggle:
+                        s = parse_seconds(st.session_state.start_time)
+                        st.session_state.end_time = format_seconds(s + 30)
+
+                fixed_30s = st.checkbox("Fixed 30s Clip", value=True, key="fixed_toggle", on_change=on_fixed_change)
+                
+                if "start_time" not in st.session_state:
+                    st.session_state.start_time = "00:00:00"
+                if "end_time" not in st.session_state:
+                    st.session_state.end_time = "00:00:30"
+
+                def on_start_change():
+                    s_str = st.session_state.start_input
+                    s = parse_seconds(s_str)
+                    st.session_state.start_time = format_seconds(s)
+                    if fixed_30s:
+                        st.session_state.end_time = format_seconds(s + 30)
+
+                def on_end_change():
+                    e_str = st.session_state.end_input
+                    e = parse_seconds(e_str)
+                    st.session_state.end_time = format_seconds(e)
+                    if fixed_30s:
+                        st.session_state.start_time = format_seconds(max(0, e - 30))
+
+                col_t1, col_t2 = st.columns(2)
+                with col_t1:
+                    start_time = st.text_input("Start Time", value=st.session_state.start_time, key="start_input", on_change=on_start_change, help="HH:MM:SS")
+                with col_t2:
+                    end_time = st.text_input("End Time", value=st.session_state.end_time, key="end_input", on_change=on_end_change, help="HH:MM:SS")
             else:
                 start_time, end_time = None, None
 
