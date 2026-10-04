@@ -36,6 +36,58 @@ class AudioConverter:
         stdout, stderr = process.communicate()
         return stderr
 
+    def get_media_info(self, input_path):
+        """
+        Parses media duration and stream types (video/audio).
+        Returns a dict: {'duration': float, 'has_video': bool, 'has_audio': bool}
+        """
+        stderr = self.probe_file(input_path)
+        import re
+        duration = 0.0
+        match = re.search(r"Duration:\s*(\d+):(\d+):(\d+(?:\.\d+)?)", stderr)
+        if match:
+            h, m, s = match.groups()
+            duration = int(h) * 3600 + int(m) * 60 + float(s)
+
+        has_video = bool(re.search(r"Stream.*Video:", stderr))
+        has_audio = bool(re.search(r"Stream.*Audio:", stderr))
+
+        return {
+            "duration": duration,
+            "has_video": has_video,
+            "has_audio": has_audio
+        }
+
+    def extract_preview_audio(self, input_path, start_time, end_time, output_path):
+        """
+        Quickly extracts a preview audio clip (MP3/WAV) for instant playback.
+        """
+        if not self.ffmpeg_path:
+            raise FileNotFoundError("FFmpeg not found.")
+
+        cmd = [
+            self.ffmpeg_path, "-y",
+            "-ss", str(start_time),
+            "-to", str(end_time),
+            "-i", input_path,
+            "-vn",
+            "-acodec", "libmp3lame" if output_path.endswith(".mp3") else "pcm_s16le",
+            output_path
+        ]
+        res = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        if res.returncode != 0:
+            # Fallback to general mp3 without specific encoder name
+            cmd = [
+                self.ffmpeg_path, "-y",
+                "-ss", str(start_time),
+                "-to", str(end_time),
+                "-i", input_path,
+                "-vn",
+                output_path
+            ]
+            subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, check=True)
+        return True
+
     def convert_to_m4r(self, input_path, output_path, start_time=None, end_time=None, progress_callback=None):
         """
         Converts input video/audio to M4R (AAC).
