@@ -35,4 +35,22 @@
 - 建立軟體確效測試套件 `tests/test_validation.py`，涵蓋音訊媒體解析、視訊媒體解析、30秒區間試聽生成、M4R鈴聲編碼輸出、邊界時間格式轉換等，3 項確效測試 100% 通過。
 - 整合 GitHub Actions 雲端 CI/CD 自動化確效流程。
 
+## [2026-10-04] 全面盤點、SSOT 重構、文件同步與可攜式打包 (Refactor & Packaging)
+
+### 任務描述
+依據 `project-refactor-cleanup` SOP，執行全專案盤點與死碼清理、建立 SSOT 共用模組、全面同步架構與指引文件（對齊 `docs/`、`wiki/`）、建立自動化打包腳本並生成可攜式獨立免安裝執行檔。
+
+### 根因分析 (RCA)
+- **程式碼重複**：原先 `streamlit_app.py` 與 `main.py` 各自維護一份 `format_seconds` 與 `parse_seconds`，缺乏單一事實來源 (SSOT)，日後若調整解析規範易引發邏輯不一致與回歸缺陷。
+- **無效設定檔殘留**：存在未配置、未引用的 `.github/workflows/jules.yml`，破壞 MECE 原則與 CI/CD 純潔性。
+- **文件與打包缺失**：缺乏系統架構與使用者指引專門文檔；桌面版缺乏一鍵獨立打包機制。
+
+### 矯正與預防措施 (CAPA)
+1. **SSOT 重構**：建立 `core/utils.py` 作為時間解析與格式化唯一真相來源，全面重構 `main.py`、`streamlit_app.py` 與測試套件，消除死碼與重複實作。
+2. **MECE 清理**：移除失效的工作流腳本 `jules.yml`，更新 `.gitignore` 排除打包與測試快取產物（`.pytest_cache/`, `build/`, `dist/`）。
+3. **文件全面對齊**：建立 `docs/ARCHITECTURE.md`、`docs/USER_GUIDE.md`、`wiki/HOME.md`，同步更新 `README.md`，實現文檔與程式碼 100% 對齊。
+4. **可攜式獨立免安裝打包**：編寫 `build_portable.py`，以 PyInstaller 將桌面版及所有依賴打包為獨立二進位檔 `dist/AppleRingtoneConverter.exe`。
+5. **基準點確效**：執行全量軟體確效測試，確保 100% 通過後建立 Git Commit 基準點。
+
+
 

@@ -7,26 +7,30 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from core.converter import AudioConverter
+from core.utils import format_seconds, parse_seconds
 from streamlit_app import format_seconds as st_format_seconds, parse_seconds as st_parse_seconds
 from main import format_seconds as main_format_seconds, parse_seconds as main_parse_seconds
 
 def test_time_conversion_consistency():
-    # Test valid formats
-    assert st_format_seconds(0) == "00:00:00"
-    assert st_format_seconds(30) == "00:00:30"
-    assert st_format_seconds(3665) == "01:01:05"
-    assert st_format_seconds(-10) == "00:00:00"
+    # Test valid formats via SSOT
+    assert format_seconds(0) == "00:00:00"
+    assert format_seconds(30) == "00:00:30"
+    assert format_seconds(3665) == "01:01:05"
+    assert format_seconds(-10) == "00:00:00"
+    assert format_seconds(None) == "00:00:00"
 
-    assert st_parse_seconds("00:00:30") == 30
-    assert st_parse_seconds("01:30") == 90
-    assert st_parse_seconds("45") == 45
-    assert st_parse_seconds("invalid") == 0
+    assert parse_seconds("00:00:30") == 30
+    assert parse_seconds("01:30") == 90
+    assert parse_seconds("45") == 45
+    assert parse_seconds("invalid") == 0
+    assert parse_seconds("") == 0
+    assert parse_seconds(None) == 0
 
-    # Ensure desktop and streamlit logic match identically
-    for s in [0, 15, 60, 125, 3600]:
-        assert st_format_seconds(s) == main_format_seconds(s)
-        formatted = st_format_seconds(s)
-        assert st_parse_seconds(formatted) == main_parse_seconds(formatted)
+    # Ensure SSOT identity across modules
+    assert format_seconds is st_format_seconds
+    assert format_seconds is main_format_seconds
+    assert parse_seconds is st_parse_seconds
+    assert parse_seconds is main_parse_seconds
 
 def test_audio_media_validation():
     converter = AudioConverter()

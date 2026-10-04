@@ -3,27 +3,7 @@ import tempfile
 import os
 import re
 from core.converter import AudioConverter
-
-def format_seconds(seconds):
-    if seconds < 0: seconds = 0
-    h = int(seconds // 3600)
-    m = int((seconds % 3600) // 60)
-    s = int(seconds % 60)
-    return f"{h:02d}:{m:02d}:{s:02d}"
-
-def parse_seconds(time_str):
-    try:
-        parts = time_str.split(':')
-        if len(parts) == 3:
-            h, m, s = map(int, parts)
-            return h * 3600 + m * 60 + s
-        elif len(parts) == 2:
-            m, s = map(int, parts)
-            return m * 60 + s
-        else:
-            return int(float(parts[0]))
-    except:
-        return 0
+from core.utils import format_seconds, parse_seconds
 
 def apply_custom_theme():
     st.markdown("""
