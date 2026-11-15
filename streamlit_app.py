@@ -1,36 +1,36 @@
-import streamlit as st
-import tempfile
+import logging
 import os
-import re
+import tempfile
+from pathlib import Path
+
+import streamlit as st
+
 from core.converter import AudioConverter
 from core.utils import format_seconds, parse_seconds
 
-def apply_custom_theme():
+logger = logging.getLogger(__name__)
+LOCKED_DURATION = 30
+AUDIO_FORMATS = {".mp3": "audio/mpeg", ".wav": "audio/wav", ".flac": "audio/flac", ".m4a": "audio/mp4"}
+
+
+def format_trim_time(seconds):
+    whole, fraction = f"{seconds:.2f}".split(".")
+    time = format_seconds(int(whole))
+    return time if fraction == "00" else f"{time}.{fraction}"
+
+
+def apply_mobile_styles():
     st.markdown("""
     <style>
-    /* Premium Glassmorphic Design Palette */
-    .stApp {
-        background: radial-gradient(circle at 50% 0%, #f1f5f9 0%, #f8fafc 100%);
-    }
-    .preview-card {
-        background: rgba(255, 255, 255, 0.85);
-        backdrop-filter: blur(12px);
-        -webkit-backdrop-filter: blur(12px);
-        border: 1px solid rgba(226, 232, 240, 0.8);
-        border-radius: 16px;
-        padding: 20px;
-        box-shadow: 0 4px 20px -2px rgba(15, 23, 42, 0.05);
-        margin-bottom: 20px;
-    }
-    .time-badge {
-        display: inline-block;
-        background: #eff6ff;
-        color: #2563eb;
-        font-family: monospace;
-        font-weight: 600;
-        padding: 4px 10px;
-        border-radius: 8px;
-        border: 1px solid #bfdbfe;
+    @media (max-width: 768px) {
+        [data-testid="stMain"] button,
+        [data-testid="stCheckbox"] label,
+        [data-testid="stSelectbox"] [data-baseweb="select"] > div {
+            min-height: 44px;
+        }
+        [data-testid="stFileUploader"] button {
+            min-width: 44px;
+        }
     }
     </style>
     """, unsafe_allow_html=True)
@@ -41,7 +41,7 @@ def main():
         page_icon="🎵",
         layout="centered"
     )
-    apply_custom_theme()
+    apply_mobile_styles()
 
     st.title("🎵 Apple Ringtone Converter")
     st.markdown("""
@@ -60,34 +60,33 @@ def main():
     )
 
     if uploaded_file:
-        # Cache file to session temp
         ext = os.path.splitext(uploaded_file.name)[1].lower()
-        if "current_file_name" not in st.session_state or st.session_state.current_file_name != uploaded_file.name:
-            st.session_state.current_file_name = uploaded_file.name
-            st.session_state.file_bytes = uploaded_file.getvalue()
+        file_bytes = uploaded_file.getvalue()
+        if st.session_state.get("current_file_id") != uploaded_file.file_id:
+            st.session_state.current_file_id = uploaded_file.file_id
             # Clear previous preview clip
             st.session_state.pop("preview_audio_bytes", None)
 
-            # Analyze file
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp_f:
-                tmp_f.write(st.session_state.file_bytes)
-                tmp_path = tmp_f.name
-
+            st.session_state.media_info = None
             try:
-                info = converter.get_media_info(tmp_path)
+                with tempfile.TemporaryDirectory() as tmpdir:
+                    source_path = Path(tmpdir) / f"input{ext}"
+                    source_path.write_bytes(file_bytes)
+                    info = converter.get_media_info(str(source_path))
                 st.session_state.media_info = info
-                st.session_state.temp_source_path = tmp_path
-                total_dur = max(1.0, info.get("duration", 30.0))
-                st.session_state.total_duration = total_dur
                 st.session_state.start_seconds = 0
-                st.session_state.end_seconds = min(30, int(total_dur))
-            except Exception as e:
-                st.error(f"檔案解析失敗: {e}")
-                st.session_state.total_duration = 30.0
-                st.session_state.media_info = {"duration": 30.0, "has_video": False, "has_audio": True}
+                st.session_state.end_seconds = min(LOCKED_DURATION, info["duration"])
+            except Exception:
+                logger.exception("Failed to inspect uploaded media")
 
-        info = st.session_state.get("media_info", {"duration": 30.0, "has_video": False, "has_audio": True})
-        total_duration = st.session_state.get("total_duration", 30.0)
+        info = st.session_state.media_info
+        if not info or info["duration"] <= 0:
+            st.error("無法讀取檔案長度，請重新選擇可播放的影音檔案。")
+            return
+        if not info["has_audio"]:
+            st.error("這個檔案沒有音軌，請重新選擇含聲音的影片或音訊檔。")
+            return
+        total_duration = info["duration"]
 
         # Preview Section
         st.markdown("### 👁️ 即時視訊/音訊預覽 (Live Media Preview)")
@@ -95,12 +94,12 @@ def main():
             if info.get("has_video"):
                 # Direct video playback for browser supported formats
                 if ext in ['.mp4', '.webm', '.mov']:
-                    st.video(st.session_state.file_bytes)
+                    st.video(file_bytes)
                 else:
                     st.info("提示：該視訊格式瀏覽器無法直接播放畫面，已提供音訊串流預覽。")
-                    st.audio(st.session_state.file_bytes)
+                    st.audio(file_bytes)
             else:
-                st.audio(st.session_state.file_bytes)
+                st.audio(file_bytes, format=AUDIO_FORMATS.get(ext, "audio/mpeg"))
 
         st.divider()
 
@@ -119,45 +118,55 @@ def main():
             enable_trim = st.checkbox("啟用時間剪輯", value=True)
 
         start_time_str = "00:00:00"
-        end_time_str = format_seconds(min(30, int(total_duration)))
+        end_time_str = format_trim_time(min(LOCKED_DURATION, total_duration))
 
         if enable_trim:
             st.markdown("#### ⏱️ 起訖時間軸調節")
             fixed_30s = st.checkbox("🔒 鎖定 30 秒鈴聲長度 (推薦 iPhone 最佳規格)", value=True, key="fixed_30s_check")
 
             # Range Slider for intuitive visual adjustment
-            current_s = st.session_state.get("start_seconds", 0)
-            current_e = st.session_state.get("end_seconds", min(30, int(total_duration)))
+            current_s = st.session_state.start_seconds
+            current_e = st.session_state.end_seconds
 
             if fixed_30s:
-                # Single start slider that automatically shifts end by 30s
-                max_start = max(0, int(total_duration - 30)) if total_duration > 30 else 0
-                selected_start = st.slider(
-                    "拖拉設定鈴聲起點 (長度固定 30 秒):",
-                    min_value=0,
-                    max_value=max_start,
-                    value=min(current_s, max_start),
-                    format="%d 秒",
-                    help="拖曳滑桿即時決定鈴聲開始時間"
-                )
-                selected_end = min(int(total_duration), selected_start + 30)
-                st.session_state.start_seconds = selected_start
-                st.session_state.end_seconds = selected_end
+                max_start = int(total_duration - LOCKED_DURATION)
+                selected_start = 0
+                if max_start > 0:
+                    selected_start = st.slider(
+                        "鈴聲起點（長度固定 30 秒）",
+                        min_value=0,
+                        max_value=max_start,
+                        value=min(int(current_s), max_start),
+                        key=f"locked_start_{uploaded_file.file_id}",
+                        format="%d 秒",
+                    )
+                elif total_duration < LOCKED_DURATION:
+                    st.info("素材不足 30 秒，將保留完整長度。取消勾選鎖定可自訂剪輯。")
+                else:
+                    st.caption("目前可選起點為 0 秒，將使用前 30 秒。")
+                selected_end = min(total_duration, selected_start + LOCKED_DURATION)
             else:
-                # Dual range slider
-                slider_range = st.slider(
-                    "自訂起訖區間 (拖拉左右雙滑塊):",
-                    min_value=0,
-                    max_value=max(1, int(total_duration)),
-                    value=(min(current_s, int(total_duration)), min(current_e, int(total_duration))),
-                    format="%d 秒"
+                selected_start, selected_end = st.slider(
+                    "自訂起訖區間（拖曳左右滑塊）",
+                    min_value=0.0,
+                    max_value=float(total_duration),
+                    value=(min(float(current_s), total_duration), min(float(current_e), total_duration)),
+                    step=0.01,
+                    key=f"custom_range_{uploaded_file.file_id}",
+                    format="%.2f 秒",
                 )
-                st.session_state.start_seconds = slider_range[0]
-                st.session_state.end_seconds = slider_range[1]
 
-            start_time_str = format_seconds(st.session_state.start_seconds)
-            end_time_str = format_seconds(st.session_state.end_seconds)
-            clip_length = st.session_state.end_seconds - st.session_state.start_seconds
+            if (selected_start, selected_end) != (current_s, current_e):
+                st.session_state.pop("preview_audio_bytes", None)
+            st.session_state.start_seconds = selected_start
+            st.session_state.end_seconds = selected_end
+
+            start_time_str = format_trim_time(selected_start)
+            end_time_str = format_trim_time(selected_end)
+            clip_length = selected_end - selected_start
+            if start_time_str == end_time_str:
+                st.warning("請將終點拖到起點之後，再試聽或轉檔。")
+                return
 
             # Visual Badges
             c1, c2, c3 = st.columns(3)
@@ -166,87 +175,79 @@ def main():
             with c2:
                 st.markdown(f"**終點:** `{end_time_str}`")
             with c3:
-                st.markdown(f"**鈴聲總長度:** `{clip_length} 秒`")
+                st.markdown(f"**鈴聲總長度:** `{clip_length:.2f} 秒`")
 
             # Instant Auditory Preview Button
             st.markdown("#### 🎧 直觀聽覺試聽")
-            if st.button("▶️ 立即試聽選定鈴聲片段 (Preview Selection)", type="secondary", use_container_width=True):
+            if st.button("▶️ 立即試聽選定鈴聲片段", type="secondary", width="stretch"):
                 with st.spinner("正在極速擷取試聽片段..."):
-                    with tempfile.NamedTemporaryFile(suffix=".mp3", delete=False) as prev_f:
-                        prev_output = prev_f.name
+                    st.session_state.pop("preview_audio_bytes", None)
                     try:
-                        converter.extract_preview_audio(
-                            input_path=st.session_state.temp_source_path,
-                            start_time=start_time_str,
-                            end_time=end_time_str,
-                            output_path=prev_output
-                        )
-                        with open(prev_output, "rb") as pf:
-                            st.session_state.preview_audio_bytes = pf.read()
-                        try:
-                            os.remove(prev_output)
-                        except:
-                            pass
-                    except Exception as pe:
-                        st.error(f"試聽生成失敗: {pe}")
+                        with tempfile.TemporaryDirectory() as tmpdir:
+                            source_path = Path(tmpdir) / f"input{ext}"
+                            source_path.write_bytes(file_bytes)
+                            preview_path = Path(tmpdir) / "preview.mp3"
+                            converter.extract_preview_audio(
+                                input_path=str(source_path),
+                                start_time=start_time_str,
+                                end_time=end_time_str,
+                                output_path=str(preview_path),
+                            )
+                            st.session_state.preview_audio_bytes = preview_path.read_bytes()
+                    except Exception:
+                        logger.exception("Failed to generate preview")
+                        st.error("無法產生試聽片段，請調整剪輯區間或重新選擇檔案。")
 
             if "preview_audio_bytes" in st.session_state:
-                st.info(f"正在播放選定片段: {start_time_str} ➜ {end_time_str}")
-                st.audio(st.session_state.preview_audio_bytes, format="audio/mp3")
+                st.info(f"試聽片段 {start_time_str} ➜ {end_time_str}")
+                st.audio(st.session_state.preview_audio_bytes, format="audio/mpeg")
 
         st.divider()
 
         # Final Action Button
-        if st.button("🚀 開始轉檔並下載鈴聲", type="primary", use_container_width=True):
+        if st.button("🚀 開始轉檔並下載鈴聲", type="primary", width="stretch"):
             process_conversion(
                 uploaded_file=uploaded_file,
                 output_ext=output_ext,
                 enable_trim=enable_trim,
                 start_time=start_time_str,
                 end_time=end_time_str,
-                source_path=st.session_state.get("temp_source_path")
             )
 
-def process_conversion(uploaded_file, output_ext, enable_trim, start_time, end_time, source_path=None):
+def process_conversion(uploaded_file, output_ext, enable_trim, start_time, end_time):
     converter = AudioConverter()
     if not converter.ffmpeg_path:
-        st.error("FFmpeg not found on server.")
+        st.error("伺服器目前無法執行轉檔，請稍後再試。")
         return
 
     with st.spinner("正在高規格編碼轉檔中..."):
-        with tempfile.TemporaryDirectory() as tmpdir:
-            ext = os.path.splitext(uploaded_file.name)[1]
-            if source_path and os.path.exists(source_path):
-                in_path = source_path
-            else:
-                in_path = os.path.join(tmpdir, f"input{ext}")
-                with open(in_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
-
-            out_path = os.path.join(tmpdir, f"output{output_ext}")
-
-            try:
+        try:
+            with tempfile.TemporaryDirectory() as tmpdir:
+                ext = os.path.splitext(uploaded_file.name)[1].lower()
+                in_path = Path(tmpdir) / f"input{ext}"
+                in_path.write_bytes(uploaded_file.getvalue())
+                out_path = Path(tmpdir) / f"output{output_ext}"
                 converter.convert_to_m4r(
-                    input_path=in_path,
-                    output_path=out_path,
+                    input_path=str(in_path),
+                    output_path=str(out_path),
                     start_time=start_time if enable_trim else None,
                     end_time=end_time if enable_trim else None
                 )
 
-                # Download button
-                base_name = os.path.splitext(uploaded_file.name)[0]
-                with open(out_path, "rb") as f:
-                    data_bytes = f.read()
-                    st.success("🎉 轉檔成功！點擊下方按鈕儲存鈴聲至手機或電腦：")
-                    st.download_button(
-                        label=f"⬇️ 下載 {base_name}{output_ext}",
-                        data=data_bytes,
-                        file_name=f"{base_name}{output_ext}",
-                        mime="audio/mp4" if output_ext == ".m4r" else "audio/x-m4a",
-                        use_container_width=True
-                    )
-            except Exception as e:
-                st.error(f"轉檔過程發生錯誤: {e}")
+                data_bytes = out_path.read_bytes()
+            base_name = os.path.splitext(uploaded_file.name)[0]
+            st.success("🎉 轉檔成功，可下載檔案。")
+            st.download_button(
+                label=f"⬇️ 下載 {base_name}{output_ext}",
+                data=data_bytes,
+                file_name=f"{base_name}{output_ext}",
+                mime="audio/mp4",
+                width="stretch",
+                on_click="ignore",
+            )
+        except Exception:
+            logger.exception("Failed to convert uploaded media")
+            st.error("無法完成轉檔，請調整剪輯區間或重新選擇檔案。")
 
 if __name__ == "__main__":
     main()

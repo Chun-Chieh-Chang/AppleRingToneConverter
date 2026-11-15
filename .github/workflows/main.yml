@@ -28,5 +28,5 @@ jobs:
         python -m py_compile main.py streamlit_app.py core/converter.py
     - name: Automated Software Validation
       run: |
-        pytest tests/test_validation.py
+        python -m pytest tests
 
