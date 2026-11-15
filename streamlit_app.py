@@ -7,6 +7,7 @@ import streamlit as st
 
 from core.converter import AudioConverter
 from core.utils import format_seconds, parse_seconds
+from locked_timeline import select_locked_start
 
 logger = logging.getLogger(__name__)
 LOCKED_DURATION = 30
@@ -128,23 +129,24 @@ def main():
             current_s = st.session_state.start_seconds
             current_e = st.session_state.end_seconds
 
+            has_locked_timeline = fixed_30s and total_duration > LOCKED_DURATION
             if fixed_30s:
-                max_start = int(total_duration - LOCKED_DURATION)
                 selected_start = 0
-                if max_start > 0:
-                    selected_start = st.slider(
-                        "鈴聲起點（長度固定 30 秒）",
-                        min_value=0,
-                        max_value=max_start,
-                        value=min(int(current_s), max_start),
+                selected_end = min(total_duration, LOCKED_DURATION)
+                if has_locked_timeline:
+                    length = LOCKED_DURATION * 100
+                    start = select_locked_start(
+                        duration=round(total_duration * 100),
+                        length=length,
+                        start=round(current_s * 100),
                         key=f"locked_start_{uploaded_file.file_id}",
-                        format="%d 秒",
                     )
+                    selected_start = start / 100
+                    selected_end = (start + length) / 100
                 elif total_duration < LOCKED_DURATION:
                     st.info("素材不足 30 秒，將保留完整長度。取消勾選鎖定可自訂剪輯。")
                 else:
                     st.caption("目前可選起點為 0 秒，將使用前 30 秒。")
-                selected_end = min(total_duration, selected_start + LOCKED_DURATION)
             else:
                 selected_start, selected_end = st.slider(
                     "自訂起訖區間（拖曳左右滑塊）",
@@ -156,8 +158,10 @@ def main():
                     format="%.2f 秒",
                 )
 
+            refresh_preview = False
             if (selected_start, selected_end) != (current_s, current_e):
-                st.session_state.pop("preview_audio_bytes", None)
+                previous_preview = st.session_state.pop("preview_audio_bytes", None)
+                refresh_preview = has_locked_timeline and previous_preview is not None
             st.session_state.start_seconds = selected_start
             st.session_state.end_seconds = selected_end
 
@@ -168,18 +172,19 @@ def main():
                 st.warning("請將終點拖到起點之後，再試聽或轉檔。")
                 return
 
-            # Visual Badges
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                st.markdown(f"**起點:** `{start_time_str}`")
-            with c2:
-                st.markdown(f"**終點:** `{end_time_str}`")
-            with c3:
-                st.markdown(f"**鈴聲總長度:** `{clip_length:.2f} 秒`")
+            if not has_locked_timeline:
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.markdown(f"**起點:** `{start_time_str}`")
+                with c2:
+                    st.markdown(f"**終點:** `{end_time_str}`")
+                with c3:
+                    st.markdown(f"**鈴聲總長度:** `{clip_length:.2f} 秒`")
 
             # Instant Auditory Preview Button
             st.markdown("#### 🎧 直觀聽覺試聽")
-            if st.button("▶️ 立即試聽選定鈴聲片段", type="secondary", width="stretch"):
+            preview_requested = st.button("▶️ 立即試聽選定鈴聲片段", type="secondary", width="stretch")
+            if preview_requested or refresh_preview:
                 with st.spinner("正在極速擷取試聽片段..."):
                     st.session_state.pop("preview_audio_bytes", None)
                     try:

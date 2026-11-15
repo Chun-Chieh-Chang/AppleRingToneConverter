@@ -7,6 +7,8 @@ import pytest
 import streamlit as st
 from streamlit.testing.v1 import AppTest
 
+import locked_timeline
+
 
 def upload_wav(duration, file_id="first"):
     data = io.BytesIO()
@@ -18,14 +20,21 @@ def upload_wav(duration, file_id="first"):
 
 @pytest.fixture
 def app(monkeypatch):
-    uploader = SimpleNamespace(file=None)
+    uploader = SimpleNamespace(file=None, timeline=None, start=None)
     monkeypatch.setattr(st, "file_uploader", lambda *args, **kwargs: uploader.file)
+
+    # AppTest has no browser and cannot render bidirectional components.
+    def timeline(*, data, **kwargs):
+        uploader.timeline = data
+        return SimpleNamespace(start=uploader.start)
+
+    monkeypatch.setattr(locked_timeline, "_timeline", timeline)
     return AppTest.from_file(str(Path(__file__).resolve().parents[1] / "streamlit_app.py")), uploader
 
 
 @pytest.mark.parametrize(
     ("duration", "end", "adjustable"),
-    [(0.75, 0.75, False), (28, 28, False), (30, 30, False), (30.9, 30, False), (31, 30, True)],
+    [(0.75, 0.75, False), (28, 28, False), (30, 30, False), (30.9, 30, True), (31, 30, True)],
 )
 def test_locked_trim_boundaries(app, duration, end, adjustable):
     page, uploader = app
@@ -33,14 +42,32 @@ def test_locked_trim_boundaries(app, duration, end, adjustable):
     page.run()
 
     assert not page.exception
-    assert bool(page.slider) == adjustable
+    assert not page.slider
+    assert (uploader.timeline is not None) == adjustable
     assert page.session_state.start_seconds == 0
     assert page.session_state.end_seconds == end
 
     if adjustable:
-        page.slider[0].set_value(1).run()
-        assert page.session_state.start_seconds == 1
-        assert page.session_state.end_seconds == 31
+        assert uploader.timeline == {"duration": round(duration * 100), "length": 3000, "start": 0}
+        uploader.start = round(duration * 100) - 3000
+        page.run()
+        assert page.session_state.start_seconds == uploader.start / 100
+        assert page.session_state.end_seconds == duration
+
+
+def test_locked_preview_follows_the_moved_window(app):
+    page, uploader = app
+    uploader.file = upload_wav(60)
+    page.run()
+    page.button[0].click().run()
+    assert len(page.get("audio")) == 2
+    assert "00:00:00 ➜ 00:00:30" in page.info[0].value
+
+    uploader.start = 1275
+    page.run()
+    assert len(page.get("audio")) == 2
+    assert "00:00:12.75 ➜ 00:00:42.75" in page.info[0].value
+
 
 
 def test_switch_range_and_replace_same_name_upload(app):
